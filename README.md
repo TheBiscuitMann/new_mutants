@@ -370,6 +370,16 @@ Avoid
 * excessively long functions
 
 
+# Test Suite
+
+This directory contains sample test programs for the compiler.
+
+- `valid/` contains programs that should compile successfully and produce valid output.
+- `invalid/` contains programs that intentionally violate lexical, syntactic, or semantic rules. Your compiler should detect and report these errors with clear diagnostic messages where possible.
+
+These files are provided as examples only. You are expected to develop additional test cases to thoroughly validate your compiler.
+
+
 # AI Usage Policy
 
 Artificial Intelligence tools are permitted.
