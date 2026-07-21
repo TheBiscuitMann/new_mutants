@@ -1,12 +1,14 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include "parser.tab.h"
 
 /* in order to report error, line counting has been included as per the instruction manual */
-int line_count = 1;
+/* int line_count = 1; */
 %}
 
-%option noyywrap
+%option noyywrap yylineno
 
 /*making the regex definitions */
 
@@ -19,75 +21,58 @@ FLOAT_LIT	{DIGIT}+"."{DIGIT}+
   /*	flex uses the longest match rule, and on ties the first rule wins	*/
   /*	whitespace will be discarded but newlines will bumb the line counter variable	 */
 [ \t\r]+	{ /* ignore spaces and tabbs */}
-\n		{ line_count++; }
+\n		{ /* no need to count manually, yylineno will handle */ }
 
   /*	Comments: discarded, not tokenized as per the instruction manul		*/
 "//"[^\n]*	{ /* single line comment will be ignored to end of line */}
-"/*"([^*]|\*+[^*/])*\*+"/"	{
-			for (char *p = yytext; *p; p++)
-				if(*p == '\n') line_count++;
-		}
+"/*"([^*]|\*+[^*/])*\*+"/"	{ /* yylineno will do the counting, so removed the loop */ }
 
   /* keywords!! they must come before the identifier rule */
-"int"		{ printf("Keyword(int)\n"); }
-"float"		{ printf("Keywod(float)\n"); }
-"bool"		{ printf("Keyword(boolean)\n"); }
-"if"		{ printf("Keyword(if)\n"); }
-"else"		{ printf("Keyword(else)\n"); }
-"while"		{ printf("Keyword(while)\n"); }
-"print"		{ printf("Keyword(print)\n"); }
-"true"		{ printf("Boolean Literal(true)\n"); }
-"false"		{ printf("Boolean Literal(false)\n"); }
+"int"		{ return INT; }
+"float"		{ return FLOAT; }
+"bool"		{ return BOOL; }
+"if"		{ return IF; }
+"else"		{ return ELSE; }
+"while"		{ return WHILE; }
+"print"		{ return PRINT; }
+"true"		{ return TRUE; }
+"false"		{ return FALSE; }
 
-{FLOAT_LIT}	{ printf("FLOAT Literal(%s)\n", yytext); }
-{INT_LIT}	{ printf("INT Literal(%s)\n", yytext); }
+{FLOAT_LIT}	{ yylval.fval = atof(yytext); return FLOAT_LIT; }
+{INT_LIT}	{ yylval.ival = atoi(yytext); return INT_LIT; }
 
   /* Identifier */
 
-{ID}		{ printf("Identifier(%s)\n", yytext); }
+{ID}		{ yylval.sval = strdup(yytext); return IDENTIFIER; }
 
   /*	operators that has more than one char must be listed before their single char prefixes	*/
 
-"<="		{ printf("Relational Operator(<=)\n"); }
-">="		{ printf("Relational Operator(>=)\n"); }
-"=="		{ printf("Relational Operator(==)\n"); }
-"!="		{ printf("Operator(!=)\n"); }
-"&&"		{ printf("Operator(&&)\n"); }
-"||"		{ printf("Operator(||)\n"); }
+"<="		{ return LE; }
+">="		{ return GE; }
+"=="		{ return EQ; }
+"!="		{ return NE; }
+"&&"		{ return AND; }
+"||"		{ return OR; }
 
-"+"		{ printf("Operator(+)\n"); }
-"-"		{ printf("Operator(-)\n"); }
-"*"		{ printf("Operator(*)\n"); }
-"/"		{ printf("Operator(/)\n"); }
-"%"		{ printf("Operator(%%)\n"); }
-"<"		{ printf("Relational Operator(<)\n"); }
-">"		{ printf("Relational Operator(>)\n"); }
-"!"		{ printf("Operator(!)\n"); }
-"="		{ printf("Assignment Operator(=)\n"); }
+"+"		{ return PLUS; }
+"-"		{ return MINUS; }
+"*"		{ return TIMES; }
+"/"		{ return DIVIDE; }
+"%"		{ return MOD; }
+"<"		{ return LT; }
+">"		{ return GT; }
+"!"		{ return NOT; }
+"="		{ return ASSIGN; }
 
 
-"{"		{ printf("LBrace\n"); }
-"}"		{ printf("RBrace\n"); }
-"("		{ printf("LParenthesis\n"); }
-")"		{ printf("RParenthesis\n"); }
-";"		{ printf("Punctuator(;)\n"); }
+"{"		{ return LBRACE; }
+"}"		{ return RBRACE; }
+"("		{ return LPAREN; }
+")"		{ return RPAREN; }
+";"		{ return SEMICOLON; }
 
   /* Anything else is a lexical error */
 
-.		{ printf("Lexical Error: unexpected character '%s' on line %d\n", yytext, line_count); }
+.		{ printf("Lexical Error: unexpected character '%s' on line %d\n", yytext, yylineno); }
 
 %%
-
-int main(int argc, char **argv)
-{
-	if(argc > 1) {
-		FILE *f = fopen(argv[1], "r");
-		if(!f) {
-			fprintf(stderr, "Error: cant open file '%s'\n", argv[1]);
-			return 1;
-		}
-		yyin = f;
-	}
-	yylex();
-	return 0;
-}
