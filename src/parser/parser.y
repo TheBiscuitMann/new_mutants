@@ -1,7 +1,7 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
-#include "../ast/ast.h"
+#include "src/ast/ast.h"
 
 // External functions and variables provided by your teammate's lexer
 extern int yylex();
