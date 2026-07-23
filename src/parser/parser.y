@@ -1,33 +1,42 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include "src/ast/ast.h"
 
+// External functions and variables provided by your teammate's lexer
 extern int yylex();
 extern int yylineno;
+extern char* yytext;
 void yyerror(const char *s);
+
+// The root of our Abstract Syntax Tree
+ASTNode* root_node = NULL;
 %}
 
-/* Semantic Value Union */
 %union {
     int ival;
     float fval;
     char *sval;
-    /* AST node pointer will be added here in a later phase */
+    struct ASTNode *node; // Allows grammar rules to pass AST nodes up the tree
 }
 
-/* Tokens (Terminals) */
-%token INT FLOAT BOOL IF ELSE WHILE PRINT TRUE FALSE
-%token <sval> IDENTIFIER
+/* Tokens with values from the lexer */
 %token <ival> INT_LIT
 %token <fval> FLOAT_LIT
+%token <sval> IDENTIFIER
+
+/* Keywords and operators (no semantic value needed here, just the token) */
+%token INT FLOAT BOOL IF ELSE WHILE PRINT TRUE FALSE
 %token PLUS MINUS TIMES DIVIDE MOD
-%token LT GT LE GE EQ NE
-%token AND OR NOT
+%token LT GT LE GE EQ NE AND OR NOT
 %token ASSIGN
 %token LBRACE RBRACE LPAREN RPAREN SEMICOLON
 
-/* Operator Precedence and Associativity (lowest to highest) */
+/* Non-terminal types mapped to our AST node struct */
+%type <node> program statement_list statement declaration type assignment 
+%type <node> if_statement while_statement print_statement block expression
+
+/* Operator Precedence and Associativity (Lowest to Highest) */
 %left OR
 %left AND
 %left EQ NE
@@ -36,103 +45,93 @@ void yyerror(const char *s);
 %left TIMES DIVIDE MOD
 %right NOT UMINUS
 
-/* Starting Non-Terminal */
-%start program
+%%
+
+/* GRAMMAR RULES AND AST ACTIONS */
+
+program: statement_list { root_node = create_node(NODE_PROGRAM, $1, NULL, NULL); $$ = root_node; }
+       ;
+
+statement_list: statement_list statement { $$ = create_node(NODE_STATEMENT_LIST, $1, NULL, $2); }
+              | /* empty */ { $$ = NULL; }
+              ;
+
+statement: declaration { $$ = $1; }
+         | assignment { $$ = $1; }
+         | if_statement { $$ = $1; }
+         | while_statement { $$ = $1; }
+         | print_statement { $$ = $1; }
+         | block { $$ = $1; }
+         ;
+
+declaration: type IDENTIFIER SEMICOLON { $$ = create_node(NODE_DECLARATION, $1, create_leaf_str(NODE_IDENTIFIER, $2), NULL); }
+           ;
+
+type: INT { $$ = create_leaf_str(NODE_TYPE, "int"); }
+    | FLOAT { $$ = create_leaf_str(NODE_TYPE, "float"); }
+    | BOOL { $$ = create_leaf_str(NODE_TYPE, "bool"); }
+    ;
+
+assignment: IDENTIFIER ASSIGN expression SEMICOLON { $$ = create_node(NODE_ASSIGNMENT, create_leaf_str(NODE_IDENTIFIER, $1), NULL, $3); }
+          ;
+
+if_statement: IF LPAREN expression RPAREN statement { $$ = create_node(NODE_IF, $3, $5, NULL); }
+            | IF LPAREN expression RPAREN statement ELSE statement { $$ = create_node(NODE_IF_ELSE, $3, $5, $7); }
+            ;
+
+while_statement: WHILE LPAREN expression RPAREN statement { $$ = create_node(NODE_WHILE, $3, $5, NULL); }
+               ;
+
+print_statement: PRINT expression SEMICOLON { $$ = create_node(NODE_PRINT, $2, NULL, NULL); }
+               ;
+
+block: LBRACE statement_list RBRACE { $$ = create_node(NODE_BLOCK, $2, NULL, NULL); }
+     ;
+
+expression: expression PLUS expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = PLUS; }
+          | expression MINUS expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = MINUS; }
+          | expression TIMES expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = TIMES; }
+          | expression DIVIDE expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = DIVIDE; }
+          | expression MOD expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = MOD; }
+          | expression LT expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = LT; }
+          | expression GT expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = GT; }
+          | expression LE expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = LE; }
+          | expression GE expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = GE; }
+          | expression EQ expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = EQ; }
+          | expression NE expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = NE; }
+          | expression AND expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = AND; }
+          | expression OR expression { $$ = create_node(NODE_BINOP, $1, NULL, $3); $$->op = OR; }
+          | NOT expression { $$ = create_node(NODE_UNOP, $2, NULL, NULL); $$->op = NOT; }
+          | MINUS expression %prec UMINUS { $$ = create_node(NODE_UNOP, $2, NULL, NULL); $$->op = MINUS; }
+          | LPAREN expression RPAREN { $$ = $2; }
+          | IDENTIFIER { $$ = create_leaf_str(NODE_IDENTIFIER, $1); }
+          | INT_LIT { $$ = create_leaf_int($1); }
+          | FLOAT_LIT { $$ = create_leaf_float($1); }
+          | TRUE { $$ = create_leaf_str(NODE_BOOL_LIT, "true"); }
+          | FALSE { $$ = create_leaf_str(NODE_BOOL_LIT, "false"); }
+          ;
 
 %%
 
-/* 3.1 Program structure */
-program:
-      statement_list
-    ;
+/* C CODE FUNCTIONS */
 
-statement_list:
-      statement_list statement
-    | /* empty (ε) */
-    ;
-
-/* 3.2 Statements */
-statement:
-      declaration
-    | assignment
-    | if_statement
-    | while_statement
-    | print_statement
-    | block
-    ;
-
-/* 3.3 Declarations */
-declaration:
-      type IDENTIFIER SEMICOLON
-    ;
-
-type:
-      INT
-    | FLOAT
-    | BOOL
-    ;
-
-/* 3.4 Assignment */
-assignment:
-      IDENTIFIER ASSIGN expression SEMICOLON
-    ;
-
-/* 3.5 Control flow */
-if_statement:
-      IF LPAREN expression RPAREN statement
-    | IF LPAREN expression RPAREN statement ELSE statement
-    ;
-
-while_statement:
-      WHILE LPAREN expression RPAREN statement
-    ;
-
-/* 3.6 Blocks (nested scopes) */
-block:
-      LBRACE statement_list RBRACE
-    ;
-
-/* 3.7 Print */
-print_statement:
-      PRINT expression SEMICOLON
-    ;
-
-/* 3.8 Expressions */
-expression:
-      expression PLUS expression
-    | expression MINUS expression
-    | expression TIMES expression
-    | expression DIVIDE expression
-    | expression MOD expression
-    | expression LT expression
-    | expression GT expression
-    | expression LE expression
-    | expression GE expression
-    | expression EQ expression
-    | expression NE expression
-    | expression AND expression
-    | expression OR expression
-    | NOT expression
-    | MINUS expression %prec UMINUS
-    | LPAREN expression RPAREN
-    | IDENTIFIER
-    | INT_LIT
-    | FLOAT_LIT
-    | TRUE
-    | FALSE
-    ;
-
-%%
-
-/* Error reporting function */
+// Called by yyparse on error
 void yyerror(const char *s) {
-    fprintf(stderr, "Syntax Error on line %d: %s\n", yylineno, s);
+    fprintf(stderr, "Error at line %d: %s\n", yylineno, s);
 }
 
-/* Main function for the parser side */
 int main(void) {
+    // yyparse returns 0 on successful parsing
     if (yyparse() == 0) {
         printf("Parsing completed successfully!\n");
+        printf("\n--- Abstract Syntax Tree ---\n");
+        
+        // Print the tree if it was built successfully
+        if (root_node != NULL) {
+            print_ast(root_node, 0);
+        }
+    } else {
+        printf("Parsing failed.\n");
     }
     return 0;
 }
